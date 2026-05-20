@@ -1,0 +1,7 @@
+UserConsolidatedField,SourceSystem,SourceField,Note
+UniqueName,Entra,UserPrincipalName,
+Name,Workday or Fieldglass,WorkerNameNickname + WorkerNamePreferredLastName,
+SupervisorUniqueName,Entra,UserPrincipalName, Need to link to the Entra field by taking the Workday SupervisorEmployeeNumber field, looking up the manager in the WorkerPublic table, then getting the LanId to link to the ad.Users table (Entra users)
+CostCenter,Workday,CostCenter,
+Company,Workday,Company,
+ExpenseLimit,
