@@ -102,8 +102,9 @@ The following are explicitly excluded from this library:
 3. For each eligible user, the library assembles the full user record by joining data from HcmWorkerPublic, Fieldglass fdg.WorkerPublic (for contractors), Entra, and the ApprovalLimits table, and applying all field-mapping and business logic rules.
 4. The library diffs the assembled records against the current-state table to identify new users (Add) and users whose tracked fields have changed (Update).
 5. Records with missing required fields are skipped; the issue is logged via `Microsoft.Extensions.Logging`.
-6. The delegate returns a `Task<List<AribaUserDto>>` containing only the changed/new records.
-7. After a successful run, the current-state table is updated to reflect the new state of returned records.
+6. The result list is topologically sorted so that any supervisor who appears in the same result precedes all of their subordinates. Ariba processes users in file order; a record that references a supervisor not yet present in Ariba and not yet earlier in the file will fail.
+7. The delegate returns a `Task<List<AribaUserDto>>` containing only the changed/new records in supervisor-first order.
+8. After a successful run, the current-state table is updated to reflect the new state of returned records.
 
 **Workflow 2: Incremental Delete**
 
@@ -154,8 +155,9 @@ A user must belong to exactly one of these groups to be included in any output. 
 | FR-020 | The library SHALL populate the GenericBillingAddress field from `AribaUserManagementOptions.GenericBillingAddress` | P0 | All output records contain the configured `GenericBillingAddress` value |
 | FR-021 | The library SHALL populate the ImportCtrl field from `AribaUserManagementOptions.ImportCtrl` | P0 | All output records contain the configured `ImportCtrl` value |
 | FR-022 | The library SHALL populate the Phone field from the first entry in Entra's `businessPhones` array, or leave blank if the array is empty | P1 | Phone is populated from the first array entry; blank when array is empty or null |
-| FR-023 | The library SHALL include unit tests for all field-mapping rules, eligibility logic, diff detection, and error-handling behavior using xUnit | P0 | Test suite passes; coverage includes all business logic branches identified in FR-005 through FR-022 |
+| FR-023 | The library SHALL include unit tests for all field-mapping rules, eligibility logic, diff detection, record ordering, and error-handling behavior using xUnit | P0 | Test suite passes; coverage includes all business logic branches identified in FR-005 through FR-022 and the supervisor-ordering rule in FR-025 |
 | FR-024 | The library SHALL expose an `AribaUserManagementOptions` class registered with the .NET `IOptions<T>` pattern; all constant field values, Entra group names, and the non-production email fallback template SHALL be read from this class and SHALL NOT be hardcoded | P0 | All values listed in section 5.5 are sourced from `AribaUserManagementOptions`; no literal values for these fields appear in production code; options can be overridden in tests without code changes |
+| FR-025 | The library SHALL return the result list from Add/Update delegates in topological order such that, for any supervisor-subordinate pair where both users appear in the same result, the supervisor record has a lower index than all of its subordinates; records whose supervisor does not appear in the same result list are unconstrained in position relative to each other | P0 | Given a result containing both a user and their `Supervisor.UniqueName`, the supervisor's index is lower than the subordinate's index; a single-pass test asserting no record references a `Supervisor.UniqueName` that appears later in the list (and is present in the list) passes |
 
 ---
 
@@ -339,12 +341,12 @@ The authoritative field mapping, including Ariba field names, data types, string
 
 ### B. Four Delegate Summary
 
-| Delegate | Realm | Operation | Eligible Groups |
-|----------|-------|-----------|-----------------|
-| `GetParentAddUpdateAsync` | Parent | Add/Update | Basic User, Basic Contractor, International User |
-| `GetParentDeleteAsync` | Parent | Delete | Basic User, Basic Contractor, International User |
-| `GetChildAddUpdateAsync` | Child | Add/Update | Basic User, Basic Contractor |
-| `GetChildDeleteAsync` | Child | Delete | Basic User, Basic Contractor |
+| Delegate | Realm | Operation | Eligible Groups | Result Ordering |
+|----------|-------|-----------|-----------------|-----------------|
+| `GetParentAddUpdateAsync` | Parent | Add/Update | Basic User, Basic Contractor, International User | Topological — supervisors before subordinates (FR-025) |
+| `GetParentDeleteAsync` | Parent | Delete | Basic User, Basic Contractor, International User | None required |
+| `GetChildAddUpdateAsync` | Child | Add/Update | Basic User, Basic Contractor | Topological — supervisors before subordinates (FR-025) |
+| `GetChildDeleteAsync` | Child | Delete | Basic User, Basic Contractor | None required |
 
 ### C. Active Field Business Logic Summary
 
