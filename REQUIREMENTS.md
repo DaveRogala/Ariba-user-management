@@ -116,13 +116,13 @@ The following are explicitly excluded from this library:
 
 ### 5.2 User Eligibility Rules
 
-Eligibility is determined by membership in one of three mutually exclusive Microsoft Entra groups:
+Eligibility is determined by membership in one of three mutually exclusive Microsoft Entra groups. The group names are configurable via `AribaUserManagementOptions` (see section 5.5); default values are shown below:
 
-| Entra Group | Included in Parent Realm | Included in Child Realm | Worker Type |
-|-------------|--------------------------|-------------------------|-------------|
-| Ariba Basic User | ✓ | ✓ | Employee (Workday) |
-| Ariba Basic Contractor | ✓ | ✓ | Contractor (Fieldglass) |
-| Ariba International User | ✓ | ✗ | Employee (Workday) |
+| Options Property | Default Group Name | Included in Parent Realm | Included in Child Realm | Worker Type |
+|------------------|--------------------|--------------------------|-------------------------|-------------|
+| `BasicUserGroupName` | Ariba Basic User | ✓ | ✓ | Employee (Workday) |
+| `BasicContractorGroupName` | Ariba Basic Contractor | ✓ | ✓ | Contractor (Fieldglass) |
+| `InternationalUserGroupName` | Ariba International User | ✓ | ✗ | Employee (Workday) |
 
 A user must belong to exactly one of these groups to be included in any output. Users in none of these groups are excluded entirely.
 
@@ -136,25 +136,26 @@ A user must belong to exactly one of these groups to be included in any output. 
 | FR-002 | The library SHALL expose a Parent Realm Delete delegate returning `Task<List<AribaUserDto>>` containing records for users who were previously eligible for the parent realm but are no longer | P0 | Delegate returns only records that existed in the current-state table but are no longer eligible |
 | FR-003 | The library SHALL expose a Child Realm Add/Update delegate returning `Task<List<AribaUserDto>>` containing new and changed records for Basic Users and Basic Contractors only | P0 | International Users are excluded; only new or changed records are returned |
 | FR-004 | The library SHALL expose a Child Realm Delete delegate returning `Task<List<AribaUserDto>>` containing records for Basic Users and Basic Contractors who were previously eligible for the child realm but are no longer | P0 | International Users are excluded; only previously-eligible users no longer in scope are returned |
-| FR-005 | The library SHALL determine user eligibility by querying Entra group membership for the three defined groups (Ariba Basic User, Ariba Basic Contractor, Ariba International User) | P0 | Only users in one of the three groups appear in any delegate output |
+| FR-005 | The library SHALL determine user eligibility by querying Entra group membership for the three defined groups whose names are read from `AribaUserManagementOptions` (`BasicUserGroupName`, `BasicContractorGroupName`, `InternationalUserGroupName`) | P0 | Only users in one of the three configured groups appear in any delegate output |
 | FR-006 | The library SHALL maintain a current-state table in the database containing the last-known values of all trackable Ariba user fields | P0 | After each successful delegate invocation, the current-state table reflects the state of all returned records |
 | FR-007 | The library SHALL diff assembled user records against the current-state table to determine Add/Update vs. no-change | P0 | Records with no field changes are not returned by Add/Update delegates |
 | FR-008 | The library SHALL assemble user records by joining data from HcmWorkerPublic (employees), Fieldglass fdg.WorkerPublic (contractors), Entra, and the ApprovalLimits lookup table | P0 | Output records contain correctly sourced values for all active fields per the field mapping |
-| FR-009 | The library SHALL apply the JobId field rule: if the user is a member of the `a-ARBxx-BranchUser` Entra group, JobId is blank; otherwise JobId is `"JF00002"` | P0 | BranchUser group members have empty JobId; all others have `"JF00002"` |
-| FR-010 | The library SHALL apply the EmailAddress fallback rule: if Email is null or blank and the execution environment is not production, use `no-email@mtb{environment}.com` where `{environment}` is `cert` or `dev` | P0 | Non-production records with no email address receive the environment-appropriate fallback address |
+| FR-009 | The library SHALL apply the JobId field rule: if the user is a member of the Entra group named by `AribaUserManagementOptions.BranchUserGroupName`, JobId is blank; otherwise JobId is the value of `AribaUserManagementOptions.DefaultJobId` | P0 | BranchUser group members have empty JobId; all others have the configured `DefaultJobId` value |
+| FR-010 | The library SHALL apply the EmailAddress fallback rule: if Email is null or blank and the execution environment is not production, use the address produced by formatting `AribaUserManagementOptions.NonProdEmailFallbackTemplate` with the current environment name (e.g. `cert` or `dev`) | P0 | Non-production records with no email address receive the environment-appropriate fallback address derived from the configured template |
 | FR-011 | The library SHALL apply the GenericShipTo field rule: for employees, concatenate LocationCode and BuildingFloor from HcmWorkerPublic; if `IsRemote` is true, look up the H-prefixed address identifier from the home-address table; for contractors, leave blank | P0 | Employee records have location-based ShipTo; remote employee records have H-prefixed identifier; contractor records have blank ShipTo |
 | FR-012 | The library SHALL look up the ApprovalLimit value from the ApprovalLimits table using the user's LevelCode from HcmWorkerPublic | P0 | ApprovalLimit in output matches the value in the ApprovalLimits table for the user's LevelCode |
 | FR-013 | The library SHALL skip any user record that is missing a required field and log a structured warning via `Microsoft.Extensions.Logging` that identifies the user and the missing field(s) | P0 | Skipped records do not appear in delegate output; a log entry is written for each skipped record identifying UniqueName and field(s) in violation |
 | FR-014 | The library SHALL derive the VanillaDeliverTo field value from the assembled Name field (WorkerNameNickname + WorkerNamePreferredLast) | P0 | VanillaDeliverTo matches Name in all output records |
 | FR-015 | The library SHALL populate the Name field by concatenating WorkerNameNickname and WorkerNamePreferredLast from HcmWorkerPublic in the format `"{First} {Last}"` | P0 | Name field matches the concatenation pattern for all records |
 | FR-016 | The library SHALL populate the Supervisor.UniqueName field from `manager.UserPrincipalName` in Entra | P0 | Supervisor.UniqueName contains the UPN of the user's Entra manager |
-| FR-017 | The library SHALL use `"PasswordAdapter1"` as a constant for the PasswordAdapter and Supervisor.PasswordAdapter fields | P0 | All output records contain `PasswordAdapter1` for both adapter fields |
-| FR-018 | The library SHALL use `"US/Eastern"` as a constant for the TimeZoneID field | P0 | All output records contain `US/Eastern` for TimeZoneID |
-| FR-019 | The library SHALL use `"MTB"` as a constant for the PurchasingUnit field | P0 | All output records contain `MTB` for PurchasingUnit |
-| FR-020 | The library SHALL use `"00073506"` as a constant for the GenericBillingAddress field | P0 | All output records contain `00073506` for GenericBillingAddress |
-| FR-021 | The library SHALL use `"Both"` as a constant for the ImportCtrl field | P0 | All output records contain `Both` for ImportCtrl |
+| FR-017 | The library SHALL populate the PasswordAdapter and Supervisor.PasswordAdapter fields from `AribaUserManagementOptions.PasswordAdapter` | P0 | All output records contain the configured `PasswordAdapter` value for both adapter fields |
+| FR-018 | The library SHALL populate the TimeZoneID field from `AribaUserManagementOptions.TimeZoneId` | P0 | All output records contain the configured `TimeZoneId` value |
+| FR-019 | The library SHALL populate the PurchasingUnit field from `AribaUserManagementOptions.PurchasingUnit` | P0 | All output records contain the configured `PurchasingUnit` value |
+| FR-020 | The library SHALL populate the GenericBillingAddress field from `AribaUserManagementOptions.GenericBillingAddress` | P0 | All output records contain the configured `GenericBillingAddress` value |
+| FR-021 | The library SHALL populate the ImportCtrl field from `AribaUserManagementOptions.ImportCtrl` | P0 | All output records contain the configured `ImportCtrl` value |
 | FR-022 | The library SHALL populate the Phone field from the first entry in Entra's `businessPhones` array, or leave blank if the array is empty | P1 | Phone is populated from the first array entry; blank when array is empty or null |
 | FR-023 | The library SHALL include unit tests for all field-mapping rules, eligibility logic, diff detection, and error-handling behavior using xUnit | P0 | Test suite passes; coverage includes all business logic branches identified in FR-005 through FR-022 |
+| FR-024 | The library SHALL expose an `AribaUserManagementOptions` class registered with the .NET `IOptions<T>` pattern; all constant field values, Entra group names, and the non-production email fallback template SHALL be read from this class and SHALL NOT be hardcoded | P0 | All values listed in section 5.5 are sourced from `AribaUserManagementOptions`; no literal values for these fields appear in production code; options can be overridden in tests without code changes |
 
 ---
 
@@ -165,23 +166,23 @@ A user must belong to exactly one of these groups to be included in any output. 
 | Field Name | Ariba Field | Type | Max Length | Source | Notes |
 |------------|-------------|------|------------|--------|-------|
 | UniqueName | User.UniqueName | string | 255 | Entra.UserPrincipalName | Required |
-| PasswordAdapter | User.PasswordAdapter | string | 50 | Constant | "PasswordAdapter1"; Required |
+| PasswordAdapter | User.PasswordAdapter | string | 50 | `AribaUserManagementOptions.PasswordAdapter` | Required |
 | Name | User.Name | string | — | HcmWorkerPublic | "{WorkerNameNickname} {WorkerNamePreferredLast}"; Required |
 | EmailAddress | User.EmailAddress | string | 255 | Entra.Email | Fallback for non-prod; Required |
 | JobId | User.JobProfile.JobFunction.JobId | string | 32 | Entra group | Conditional; see FR-009 |
-| TimeZoneID | User.TimeZoneID | string | 50 | Constant | "US/Eastern" |
+| TimeZoneID | User.TimeZoneID | string | 50 | `AribaUserManagementOptions.TimeZoneId` | |
 | Phone | User.Phone | string | 70 | Entra.businessPhones[0] | Optional |
 | Supervisor.UniqueName | User.Supervisor.UniqueName | string | 255 | Entra.manager.UserPrincipalName | Required |
-| Supervisor.PasswordAdapter | User.Supervisor.PasswordAdapter | string | 50 | Constant | "PasswordAdapter1"; Required |
+| Supervisor.PasswordAdapter | User.Supervisor.PasswordAdapter | string | 50 | `AribaUserManagementOptions.PasswordAdapter` | Required |
 | VanillaDeliverTo | DeliverTo | string | 100 | Derived | Same as Name; nullable |
-| PurchasingUnit | Accounting.ProcurementUnit.UniqueName | string | 50 | Constant | "MTB" |
-| GenericBillingAddress | User.BillingAddressesList | string | 100 | Constant | "00073506"; Required |
+| PurchasingUnit | Accounting.ProcurementUnit.UniqueName | string | 50 | `AribaUserManagementOptions.PurchasingUnit` | |
+| GenericBillingAddress | User.BillingAddressesList | string | 100 | `AribaUserManagementOptions.GenericBillingAddress` | Required |
 | GenericShipTo | User.ShipTosList | string | 100 | HcmWorkerPublic / home-address table | See FR-011; Required |
 | ApprovalLimit | ApprovalLimit | long | — | ApprovalLimits table | Lookup by LevelCode; nullable |
 | Company | Accounting.Company.UniqueName | string | 50 | HcmWorkerPublic.CompanyCode | |
 | BusinessUnit | Accounting.BusinessUnit.UniqueName | string | 50 | HcmWorkerPublic.SbuCode | Required |
 | CostCenter | Accounting.CostCenter.UniqueName | string | 50 | HcmWorkerPublic.CostCenterCode | Required |
-| ImportCtrl | ImportCtrl | string | 100 | Constant | "Both"; nullable |
+| ImportCtrl | ImportCtrl | string | 100 | `AribaUserManagementOptions.ImportCtrl` | nullable |
 | AlternateEmailAddresses | User.PersistedAlternateEmailAddressesList | string | 100 | Not used | Empty; Required (Ariba expects the column) |
 
 Fields listed as "Not Used" in the source mapping (DefaultCurrency, LocaleID, Fax, CardNumbers, ExpenseApprovalLimit, Product, Project, Account, SubAccount, Region, UserUUID, and the three custom Accounting fields) SHALL be included in the DTO with null or empty values to satisfy the Ariba file column contract.
@@ -190,7 +191,29 @@ Fields listed as "Not Used" in the source mapping (DefaultCurrency, LocaleID, Fa
 
 ---
 
-### 5.5 Integrations
+### 5.5 Configuration Options
+
+The library SHALL expose an `AribaUserManagementOptions` class registered with the .NET `IOptions<T>` pattern. All constant field values and external identifiers SHALL be read from this class; none SHALL be hardcoded in production logic. The table below lists every configurable property, its type, its default value, and where it is consumed.
+
+| Property | Type | Default Value | Consumed By |
+|----------|------|---------------|-------------|
+| `PasswordAdapter` | string | `"PasswordAdapter1"` | PasswordAdapter field; Supervisor.PasswordAdapter field (FR-017) |
+| `TimeZoneId` | string | `"US/Eastern"` | TimeZoneID field (FR-018) |
+| `PurchasingUnit` | string | `"MTB"` | PurchasingUnit field (FR-019) |
+| `GenericBillingAddress` | string | `"00073506"` | GenericBillingAddress field (FR-020) |
+| `ImportCtrl` | string | `"Both"` | ImportCtrl field (FR-021) |
+| `DefaultJobId` | string | `"JF00002"` | JobId field for non-BranchUser members (FR-009) |
+| `BranchUserGroupName` | string | `"a-ARBxx-BranchUser"` | JobId conditional logic — blank JobId when user is in this group (FR-009) |
+| `NonProdEmailFallbackTemplate` | string | `"no-email@mtb{0}.com"` | EmailAddress fallback; `{0}` is replaced with the environment name (FR-010) |
+| `BasicUserGroupName` | string | `"Ariba Basic User"` | Eligibility determination — parent and child realms (FR-005) |
+| `BasicContractorGroupName` | string | `"Ariba Basic Contractor"` | Eligibility determination — parent and child realms (FR-005) |
+| `InternationalUserGroupName` | string | `"Ariba International User"` | Eligibility determination — parent realm only (FR-005) |
+
+The default values listed above reflect the current production configuration and SHALL be used as the out-of-the-box defaults when no overriding configuration is supplied. The host (Azure Function) MAY override any value via standard .NET configuration sources (appsettings.json, environment variables, Azure App Configuration, Key Vault).
+
+---
+
+### 5.6 Integrations
 
 | System | Direction | Data Accessed | Notes |
 |--------|-----------|---------------|-------|
@@ -328,8 +351,8 @@ The authoritative field mapping, including Ariba field names, data types, string
 | Field | Logic Type | Rule |
 |-------|------------|------|
 | Name | Derived | `"{WorkerNameNickname} {WorkerNamePreferredLast}"` from HcmWorkerPublic |
-| EmailAddress | Conditional | If null/blank and env ≠ prod → `no-email@mtb{cert\|dev}.com` |
-| JobId | Conditional | BranchUser group member → blank; otherwise `"JF00002"` |
+| EmailAddress | Conditional | If null/blank and env ≠ prod → format `AribaUserManagementOptions.NonProdEmailFallbackTemplate` with env name |
+| JobId | Conditional | Member of `AribaUserManagementOptions.BranchUserGroupName` → blank; otherwise `AribaUserManagementOptions.DefaultJobId` |
 | VanillaDeliverTo | Derived | Same value as Name field |
 | GenericShipTo | Conditional | Employee: LocationCode + BuildingFloor; Remote employee: H-prefixed home-address lookup; Contractor: blank |
 | ApprovalLimit | Lookup | ApprovalLimits table keyed by HcmWorkerPublic.LevelCode |
